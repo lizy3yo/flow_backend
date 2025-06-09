@@ -3,7 +3,7 @@ require_once __DIR__ . '/db.php';
 
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
@@ -14,8 +14,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
-    $email = $data['email'] ?? '';
-    $otp = $data['otp'] ?? '';
+    $email = trim($data['email'] ?? '');
+    $otp = trim($data['otp'] ?? '');
 
     if (empty($email) || empty($otp)) {
         http_response_code(400);
@@ -23,13 +23,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Validate OTP format
+    if (!preg_match('/^\d{6}$/', $otp)) {
+        echo json_encode(['success' => false, 'message' => 'OTP must be exactly 6 digits']);
+        exit;
+    }
+
     try {
         // Get the latest OTP record for this email
         $stmt = $pdo->prepare("
-            SELECT id, otp, expires_at 
+            SELECT id, otp, expires_at, created_at
             FROM otp_verifications 
             WHERE email = ? 
             AND expires_at > NOW() 
+            AND verified = FALSE
             ORDER BY created_at DESC 
             LIMIT 1
         ");
@@ -53,54 +60,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmt->execute([$row['id']]);
             
-            // Delete other OTP records for this email
+            // Delete other OTP records for this email to prevent reuse
             $stmt = $pdo->prepare("DELETE FROM otp_verifications WHERE email = ? AND id != ?");
             $stmt->execute([$email, $row['id']]);
             
             echo json_encode(['success' => true, 'message' => 'OTP verified successfully']);
         } else {
-            echo json_encode(['success' => false, 'message' => 'Invalid OTP']);
+            echo json_encode(['success' => false, 'message' => 'Invalid OTP code']);
         }
         
     } catch (Exception $e) {
+        error_log("OTP Verification Error: " . $e->getMessage());
         http_response_code(500);
         echo json_encode(['success' => false, 'message' => 'Verification failed: ' . $e->getMessage()]);
-    }
-} elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['email']) && isset($_GET['otp'])) {
-    $email = $_GET['email'];
-    $otp = $_GET['otp'];
-
-    try {
-        // Get user ID
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->execute([$email]);
-        
-        if ($stmt->rowCount() === 0) {
-            echo json_encode(['success' => false, 'message' => 'Email not found']);
-            exit;
-        }
-
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        $user_id = $user['id'];
-
-        // Check OTP
-        $stmt = $pdo->prepare("SELECT token, expiry FROM password_resets WHERE user_id = ? ORDER BY expiry DESC LIMIT 1");
-        $stmt->execute([$user_id]);
-        
-        if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            echo json_encode([
-                'success' => true,
-                'stored_otp' => $row['token'],
-                'expiry' => $row['expiry'],
-                'submitted_otp' => $otp,
-                'match' => $row['token'] === $otp
-            ]);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'No OTP found']);
-        }
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
     }
 } else {
     http_response_code(405);
