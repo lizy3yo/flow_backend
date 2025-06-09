@@ -15,49 +15,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
-// Check admin authentication using session or token
+// Check admin authentication using multiple methods
 $admin_id = null;
 
-// First check session
+// Method 1: Check session
 if (isset($_SESSION['admin_id'])) {
     $admin_id = $_SESSION['admin_id'];
-} 
-// Then check Authorization header for token
-else {
+} else {
+    // Method 2: Check Authorization header for token
     $headers = getallheaders();
-    $auth_header = isset($headers['Authorization']) ? $headers['Authorization'] : '';
-    
-    if (strpos($auth_header, 'Bearer ') === 0) {
-        $token = substr($auth_header, 7);
+    if (isset($headers['Authorization'])) {
+        $token = str_replace('Bearer ', '', $headers['Authorization']);
         
-        // Find admin by token
+        // Verify token against database
         $stmt = $pdo->prepare("SELECT id FROM admins WHERE session_token = ?");
         $stmt->execute([$token]);
         $admin = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($admin) {
             $admin_id = $admin['id'];
-            $_SESSION['admin_id'] = $admin_id; // Restore session
-        }
-    }
-    
-    // Check for token in query param as fallback
-    if (!$admin_id && isset($_GET['token'])) {
-        $stmt = $pdo->prepare("SELECT id FROM admins WHERE session_token = ?");
-        $stmt->execute([$_GET['token']]);
-        $admin = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($admin) {
-            $admin_id = $admin['id'];
-            $_SESSION['admin_id'] = $admin_id; // Restore session
+            // Set session for future requests
+            $_SESSION['admin_id'] = $admin_id;
         }
     }
 }
 
-// If no authentication was successful
 if (!$admin_id) {
     http_response_code(401);
     echo json_encode(['error' => 'Unauthorized access - please login']);
+    exit();
+}
+
+// Verify the admin still exists and session is valid
+$stmt = $pdo->prepare("SELECT id, session_token FROM admins WHERE id = ?");
+$stmt->execute([$admin_id]);
+$admin = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$admin || empty($admin['session_token'])) {
+    // Invalid admin or no session token
+    session_destroy();
+    http_response_code(401);
+    echo json_encode(['error' => 'Invalid session - please login again']);
     exit();
 }
 
