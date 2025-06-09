@@ -101,39 +101,52 @@ try {
     // Send email with OTP
     $mail = new PHPMailer(true);
     
-    // Server settings
-    $mail->isSMTP();
-    $mail->Host = $env['SMTP_HOST'];
-    $mail->SMTPAuth = true;
-    $mail->Username = $env['SMTP_USERNAME'];
-    $mail->Password = $env['SMTP_PASSWORD'];
-    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port = 587;
-    
-    // Add connection timeout
-    $mail->Timeout = 30;
-    $mail->SMTPKeepAlive = true;
-    
-    // Recipients
-    $mail->setFrom($env['SMTP_USERNAME'], $env['SMTP_FROM_NAME']);
-    $mail->addAddress($email);
-    
-    // Content
-    $mail->isHTML(true);
-    $mail->Subject = 'Your Flow Verification Code';
-    $mail->Body = "
-        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
-            <h2>Verification Code</h2>
-            <p>Your verification code is: <strong style='font-size: 24px;'>{$otp}</strong></p>
-            <p>This code will expire in 5 minutes.</p>
-            <p>If you didn't request this code, please ignore this email.</p>
-        </div>
-    ";
-    
-    $mail->send();
-    
-    echo json_encode(['success' => true, 'message' => 'OTP sent successfully', 'skipOtp' => false]);
-    
+    try {
+        // Enable verbose debug output (remove in production)
+        $mail->SMTPDebug = 2;
+        $mail->Debugoutput = function($str, $level) {
+            error_log("PHPMailer Debug Level $level: $str");
+        };
+        
+        // Server settings
+        $mail->isSMTP();
+        $mail->Host = $env['SMTP_HOST'];
+        $mail->SMTPAuth = true;
+        $mail->Username = $env['SMTP_USERNAME'];
+        $mail->Password = $env['SMTP_PASSWORD'];
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port = 587;
+        
+        // Add connection timeout
+        $mail->Timeout = 30;
+        $mail->SMTPKeepAlive = true;
+        
+        // Recipients
+        $mail->setFrom($env['SMTP_USERNAME'], $env['SMTP_FROM_NAME']);
+        $mail->addAddress($email);
+        
+        // Content
+        $mail->isHTML(true);
+        $mail->Subject = 'Your Flow Verification Code';
+        $mail->Body = "
+            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
+                <h2>Verification Code</h2>
+                <p>Your verification code is: <strong style='font-size: 24px;'>{$otp}</strong></p>
+                <p>This code will expire in 5 minutes.</p>
+                <p>If you didn't request this code, please ignore this email.</p>
+            </div>
+        ";
+        
+        $mail->send();
+        
+        echo json_encode(['success' => true, 'message' => 'OTP sent successfully', 'skipOtp' => false]);
+        
+    } catch (Exception $e) {
+        error_log("PHPMailer Error: " . $mail->ErrorInfo);
+        error_log("Exception: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Failed to send email: ' . $mail->ErrorInfo]);
+    }
 } catch (Exception $e) {
     error_log("OTP Send Error: " . $e->getMessage());
     http_response_code(500);
