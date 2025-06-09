@@ -15,14 +15,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
-// Check if user is logged in
+// Enhanced session check with debugging
 if (!isset($_SESSION['admin_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized access']);
-    exit();
+    // Log session data for debugging
+    error_log("Session data: " . print_r($_SESSION, true));
+    error_log("Session ID: " . session_id());
+    
+    // Try to get admin_id from localStorage data if session is missing
+    $headers = getallheaders();
+    $authHeader = isset($headers['Authorization']) ? $headers['Authorization'] : null;
+    
+    if ($authHeader && strpos($authHeader, 'Bearer ') === 0) {
+        $token = substr($authHeader, 7);
+        // Verify token and get admin_id
+        $stmt = $pdo->prepare("SELECT admin_id FROM admin_sessions WHERE session_token = ? AND expires_at > NOW()");
+        $stmt->execute([$token]);
+        $session = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($session) {
+            $_SESSION['admin_id'] = $session['admin_id'];
+            $admin_id = $session['admin_id'];
+        } else {
+            http_response_code(401);
+            echo json_encode(['error' => 'Invalid or expired token']);
+            exit();
+        }
+    } else {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized access - no session or token']);
+        exit();
+    }
+} else {
+    $admin_id = $_SESSION['admin_id'];
 }
-
-$admin_id = $_SESSION['admin_id'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['avatar'])) {
     // Use session admin_id instead of hardcoded value
