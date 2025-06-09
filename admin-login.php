@@ -30,7 +30,7 @@ try {
     if ($admin && password_verify($data['password'], $admin['password'])) {
         // Login successful
         session_start();
-        $_SESSION['admin_id'] = $admin['id'];
+        $_SESSION['admin_id'] = $admin['id']; // Make sure this line exists
         
         // Generate a session token
         $session_token = bin2hex(random_bytes(32));

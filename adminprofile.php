@@ -15,33 +15,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
-// Fix the session check
-if (!isset($_SESSION['admin_id'])) {
-    $headers = getallheaders();
-    $authHeader = isset($headers['Authorization']) ? $headers['Authorization'] : null;
-    
-    if ($authHeader && strpos($authHeader, 'Bearer ') === 0) {
-        $token = substr($authHeader, 7);
-        // Use the admins table instead of non-existent admin_sessions table
-        $stmt = $pdo->prepare("SELECT id FROM admins WHERE session_token = ?");
-        $stmt->execute([$token]);
-        $admin = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($admin) {
-            $_SESSION['admin_id'] = $admin['id'];
-            $admin_id = $admin['id'];
-        } else {
-            http_response_code(401);
-            echo json_encode(['error' => 'Invalid or expired token']);
-            exit();
-        }
-    } else {
-        http_response_code(401);
-        echo json_encode(['error' => 'Unauthorized access - no session or token']);
-        exit();
-    }
-} else {
+// Check admin authentication using session token from cookies
+$admin_id = null;
+
+// Check if session exists
+if (isset($_SESSION['admin_id'])) {
     $admin_id = $_SESSION['admin_id'];
+} else {
+    // No session, return 401
+    http_response_code(401);
+    echo json_encode(['error' => 'Unauthorized access - please login']);
+    exit();
+}
+
+// Verify the admin still exists and session is valid
+$stmt = $pdo->prepare("SELECT id, session_token FROM admins WHERE id = ?");
+$stmt->execute([$admin_id]);
+$admin = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$admin || empty($admin['session_token'])) {
+    // Invalid admin or no session token
+    session_destroy();
+    http_response_code(401);
+    echo json_encode(['error' => 'Invalid session - please login again']);
+    exit();
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['avatar'])) {
