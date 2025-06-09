@@ -15,26 +15,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
-// Enhanced session check with debugging
+// Fix the session check
 if (!isset($_SESSION['admin_id'])) {
-    // Log session data for debugging
-    error_log("Session data: " . print_r($_SESSION, true));
-    error_log("Session ID: " . session_id());
-    
-    // Try to get admin_id from localStorage data if session is missing
     $headers = getallheaders();
     $authHeader = isset($headers['Authorization']) ? $headers['Authorization'] : null;
     
     if ($authHeader && strpos($authHeader, 'Bearer ') === 0) {
         $token = substr($authHeader, 7);
-        // Verify token and get admin_id
-        $stmt = $pdo->prepare("SELECT admin_id FROM admin_sessions WHERE session_token = ? AND expires_at > NOW()");
+        // Use the admins table instead of non-existent admin_sessions table
+        $stmt = $pdo->prepare("SELECT id FROM admins WHERE session_token = ?");
         $stmt->execute([$token]);
-        $session = $stmt->fetch(PDO::FETCH_ASSOC);
+        $admin = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        if ($session) {
-            $_SESSION['admin_id'] = $session['admin_id'];
-            $admin_id = $session['admin_id'];
+        if ($admin) {
+            $_SESSION['admin_id'] = $admin['id'];
+            $admin_id = $admin['id'];
         } else {
             http_response_code(401);
             echo json_encode(['error' => 'Invalid or expired token']);
