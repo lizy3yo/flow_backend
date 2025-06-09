@@ -1,21 +1,22 @@
 <?php
-
-require_once __DIR__ . '/db.php';
-require __DIR__ . '/vendor/autoload.php';
-
-$env = parse_ini_file(__DIR__ . '/.env');
-
+// Set CORS headers FIRST, before any other logic
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
-// Handle preflight OPTIONS request
+// Handle preflight OPTIONS request AFTER setting headers
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
+
+require_once __DIR__ . '/db.php';
+require '../vendor/autoload.php';
+
+$env = parse_ini_file('/.env');
+
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
