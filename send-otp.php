@@ -13,9 +13,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/db.php';
-require '/vendor/autoload.php';
+require __DIR__ . '/vendor/autoload.php';
 
-$env = parse_ini_file('/.env');
+$env = parse_ini_file(__DIR__ . '/.env');
 
 
 use PHPMailer\PHPMailer\PHPMailer;
