@@ -15,29 +15,49 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
-// Check admin authentication using session token from cookies
+// Check admin authentication using session or token
 $admin_id = null;
 
-// Check if session exists
+// First check session
 if (isset($_SESSION['admin_id'])) {
     $admin_id = $_SESSION['admin_id'];
-} else {
-    // No session, return 401
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized access - please login']);
-    exit();
+} 
+// Then check Authorization header for token
+else {
+    $headers = getallheaders();
+    $auth_header = isset($headers['Authorization']) ? $headers['Authorization'] : '';
+    
+    if (strpos($auth_header, 'Bearer ') === 0) {
+        $token = substr($auth_header, 7);
+        
+        // Find admin by token
+        $stmt = $pdo->prepare("SELECT id FROM admins WHERE session_token = ?");
+        $stmt->execute([$token]);
+        $admin = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($admin) {
+            $admin_id = $admin['id'];
+            $_SESSION['admin_id'] = $admin_id; // Restore session
+        }
+    }
+    
+    // Check for token in query param as fallback
+    if (!$admin_id && isset($_GET['token'])) {
+        $stmt = $pdo->prepare("SELECT id FROM admins WHERE session_token = ?");
+        $stmt->execute([$_GET['token']]);
+        $admin = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($admin) {
+            $admin_id = $admin['id'];
+            $_SESSION['admin_id'] = $admin_id; // Restore session
+        }
+    }
 }
 
-// Verify the admin still exists and session is valid
-$stmt = $pdo->prepare("SELECT id, session_token FROM admins WHERE id = ?");
-$stmt->execute([$admin_id]);
-$admin = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$admin || empty($admin['session_token'])) {
-    // Invalid admin or no session token
-    session_destroy();
+// If no authentication was successful
+if (!$admin_id) {
     http_response_code(401);
-    echo json_encode(['error' => 'Invalid session - please login again']);
+    echo json_encode(['error' => 'Unauthorized access - please login']);
     exit();
 }
 
