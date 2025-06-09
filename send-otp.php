@@ -13,7 +13,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/db.php';
-require __DIR__ . '/vendor/autoload.php';
+
+// Debug: Check if vendor/autoload.php exists
+$autoloadPath = __DIR__ . '/vendor/autoload.php';
+if (!file_exists($autoloadPath)) {
+    die(json_encode(['success' => false, 'message' => 'Autoload file not found at: ' . $autoloadPath]));
+}
+
+require $autoloadPath;
 
 $env = parse_ini_file('.env');
 
