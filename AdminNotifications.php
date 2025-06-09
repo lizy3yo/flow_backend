@@ -64,7 +64,7 @@ switch ($_SERVER['REQUEST_METHOD']) {
             $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
             $totalPages = ceil($totalCount / $limit);
 
-            // Get notifications with pagination
+            // Get notifications with pagination - FIX: Use bindParam for integers
             $stmt = $pdo->prepare("
                 SELECT id, admin_id, type, message, action, entity_id, created_at, read_at
                 FROM admin_notifications 
@@ -72,7 +72,10 @@ switch ($_SERVER['REQUEST_METHOD']) {
                 ORDER BY created_at DESC 
                 LIMIT ? OFFSET ?
             ");
-            $stmt->execute([$adminId, $limit, $offset]);
+            $stmt->bindParam(1, $adminId, PDO::PARAM_INT);
+            $stmt->bindParam(2, $limit, PDO::PARAM_INT);
+            $stmt->bindParam(3, $offset, PDO::PARAM_INT);
+            $stmt->execute();
             $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             // Get unread count

@@ -1,33 +1,18 @@
 <?php
-// Set headers first, before any other output
+
+require_once __DIR__ . '/db.php';
+require '../vendor/autoload.php';
+
+$env = parse_ini_file('../.env');
+
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
-// Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
-    exit();
-}
-
-// Only include dependencies after headers are set
-require_once __DIR__ . '/db.php';
-require '../vendor/autoload.php';
-
-// Check if .env file exists
-$envFile = '../.env';
-if (!file_exists($envFile)) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Configuration file not found']);
-    exit();
-}
-
-$env = parse_ini_file($envFile);
-if (!$env) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Failed to load configuration']);
     exit();
 }
 
@@ -40,26 +25,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$input = file_get_contents('php://input');
-$data = json_decode($input, true);
-
-if (json_last_error() !== JSON_ERROR_NONE) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Invalid JSON data']);
-    exit;
-}
-
+$data = json_decode(file_get_contents('php://input'), true);
 $email = $data['email'] ?? '';
 
 if (empty($email)) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Email is required']);
-    exit;
-}
-
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Invalid email format']);
     exit;
 }
 
@@ -90,16 +61,12 @@ try {
     $stmt = $pdo->prepare("INSERT INTO otp_verifications (email, otp, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))");
     $stmt->execute([$email, $hashedOtp]);
 
-    // Verify required SMTP configuration
-    $requiredEnvVars = ['SMTP_HOST', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'SMTP_FROM_NAME'];
-    foreach ($requiredEnvVars as $var) {
-        if (empty($env[$var])) {
-            throw new Exception("Missing SMTP configuration: $var");
-        }
-    }
-
     // Send email with OTP
     $mail = new PHPMailer(true);
+    $mail->SMTPDebug = 3; // Increase debug level (0-4)
+    $mail->Debugoutput = function($str, $level) {
+        error_log("PHPMailer DEBUG: $str");
+    };
     
     // Server settings
     $mail->isSMTP();
@@ -131,6 +98,7 @@ try {
     ";
     
     $mail->send();
+    error_log("OTP email sent successfully");
     
     echo json_encode(['success' => true, 'message' => 'OTP sent successfully', 'skipOtp' => false]);
     
