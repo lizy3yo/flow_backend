@@ -1,17 +1,14 @@
 <?php
-
-
 session_start();
 include "db.php";
 require_once "Helper/usernotificationhelper.php";
 
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Methods: GET, PUT, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
-// Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
@@ -35,18 +32,17 @@ switch ($_SERVER['REQUEST_METHOD']) {
 
         try {
             // Get total count for pagination
-            $countStmt = $conn->prepare("
+            $countStmt = $pdo->prepare("
                 SELECT COUNT(*) as total 
                 FROM user_notifications 
                 WHERE user_id = ?
             ");
-            $countStmt->bind_param("i", $userId);
-            $countStmt->execute();
-            $totalCount = $countStmt->get_result()->fetch_assoc()['total'];
+            $countStmt->execute([$userId]);
+            $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
             $totalPages = ceil($totalCount / $limit);
 
             // Get notifications with pagination
-            $stmt = $conn->prepare("
+            $stmt = $pdo->prepare("
                 SELECT n.*, s.name as service_name 
                 FROM user_notifications n
                 LEFT JOIN services s ON n.service_id = s.id 
@@ -54,22 +50,20 @@ switch ($_SERVER['REQUEST_METHOD']) {
                 ORDER BY n.created_at DESC 
                 LIMIT ? OFFSET ?
             ");
-            $stmt->bind_param("iii", $userId, $limit, $offset);
-            $stmt->execute();
-            $notifications = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt->execute([$userId, $limit, $offset]);
+            $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             // Get unread count
-            $unreadStmt = $conn->prepare("
+            $unreadStmt = $pdo->prepare("
                 SELECT COUNT(*) as unread 
                 FROM user_notifications 
                 WHERE user_id = ? AND read_at IS NULL
             ");
-            $unreadStmt->bind_param("i", $userId);
-            $unreadStmt->execute();
-            $unreadCount = $unreadStmt->get_result()->fetch_assoc()['unread'];
+            $unreadStmt->execute([$userId]);
+            $unreadCount = $unreadStmt->fetch(PDO::FETCH_ASSOC)['unread'];
 
             // Get current active queues for real-time position updates
-            $activeQueuesStmt = $conn->prepare("
+            $activeQueuesStmt = $pdo->prepare("
                 SELECT 
                     q.id,
                     q.queue_number,
@@ -86,9 +80,8 @@ switch ($_SERVER['REQUEST_METHOD']) {
                 GROUP BY q.id
                 ORDER BY q.created_at DESC
             ");
-            $activeQueuesStmt->bind_param("i", $userId);
-            $activeQueuesStmt->execute();
-            $activeQueues = $activeQueuesStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $activeQueuesStmt->execute([$userId]);
+            $activeQueues = $activeQueuesStmt->fetchAll(PDO::FETCH_ASSOC);
 
             echo json_encode([
                 'notifications' => $notifications,
@@ -108,29 +101,25 @@ switch ($_SERVER['REQUEST_METHOD']) {
         try {
             if (isset($data['markAllAsRead'])) {
                 // Mark all notifications as read
-                $stmt = $conn->prepare("
+                $stmt = $pdo->prepare("
                     UPDATE user_notifications 
                     SET read_at = NOW() 
                     WHERE user_id = ? AND read_at IS NULL
                 ");
-                $stmt->bind_param("i", $userId);
+                $stmt->execute([$userId]);
             } else if (isset($data['notification_id'])) {
                 // Mark single notification as read
-                $stmt = $conn->prepare("
+                $stmt = $pdo->prepare("
                     UPDATE user_notifications 
                     SET read_at = NOW() 
                     WHERE id = ? AND user_id = ?
                 ");
-                $stmt->bind_param("ii", $data['notification_id'], $userId);
+                $stmt->execute([$data['notification_id'], $userId]);
             } else {
                 throw new Exception('Invalid request');
             }
 
-            if ($stmt->execute()) {
-                echo json_encode(['success' => true]);
-            } else {
-                throw new Exception('Failed to update notification');
-            }
+            echo json_encode(['success' => true]);
         } catch (Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
@@ -141,3 +130,4 @@ switch ($_SERVER['REQUEST_METHOD']) {
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
 }
+?>

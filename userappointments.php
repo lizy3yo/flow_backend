@@ -2,15 +2,14 @@
 
 session_start();
 include "db.php";
-require_once "Helper/usernotificationhelper.php"; // Add this line
+require_once "Helper/usernotificationhelper.php";
 
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Methods: GET, PUT, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
-// Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
@@ -26,7 +25,7 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 
 // Initialize notification helper
-$userNotificationHelper = new UserNotificationHelper($conn);
+$userNotificationHelper = new UserNotificationHelper($pdo);
 
 switch ($_SERVER['REQUEST_METHOD']) {
     case 'GET':
@@ -41,13 +40,12 @@ switch ($_SERVER['REQUEST_METHOD']) {
                     WHERE q.user_id = ?
                     ORDER BY q.created_at DESC";
 
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("i", $user_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$user_id]);
+            $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $queues = [];
-            while ($row = $result->fetch_assoc()) {
+            foreach ($result as $row) {
                 $queues[] = [
                     'number' => $row['queue_number'],
                     'department' => $row['department_name'],
@@ -57,7 +55,7 @@ switch ($_SERVER['REQUEST_METHOD']) {
                     'created_at' => $row['created_at'],
                     'scheduled_time' => $row['scheduled_time'],
                     'serviceId' => $row['service_id'],
-                    'departmentId' => $row['department_id']  // Add this line
+                    'departmentId' => $row['department_id']
                 ];
             }
 
@@ -76,20 +74,16 @@ switch ($_SERVER['REQUEST_METHOD']) {
             
             if ($data['action'] === 'cancel_and_archive') {
                 // Begin transaction
-                $conn->begin_transaction();
+                $pdo->beginTransaction();
 
                 // 1. Update queue status to cancelled
-                $updateSql = "UPDATE queues SET status = 'cancelled' WHERE queue_number = ?";
-                $stmt = $conn->prepare($updateSql);
-                $stmt->bind_param("s", $queueNumber);
-                $stmt->execute();
+                $stmt = $pdo->prepare("UPDATE queues SET status = 'cancelled' WHERE queue_number = ?");
+                $stmt->execute([$queueNumber]);
 
                 // Get queue details for notification
-                $queueDetailsSql = "SELECT service_id FROM queues WHERE queue_number = ?";
-                $stmt = $conn->prepare($queueDetailsSql);
-                $stmt->bind_param("s", $queueNumber);
-                $stmt->execute();
-                $queueDetails = $stmt->get_result()->fetch_assoc();
+                $stmt = $pdo->prepare("SELECT service_id FROM queues WHERE queue_number = ?");
+                $stmt->execute([$queueNumber]);
+                $queueDetails = $stmt->fetch(PDO::FETCH_ASSOC);
 
                 // Send notification for cancelled queue
                 $userNotificationHelper->notifyQueueCancelled(
@@ -99,25 +93,21 @@ switch ($_SERVER['REQUEST_METHOD']) {
                 );
 
                 // 2. Insert into archived_queues
-                $archiveSql = "INSERT INTO archived_queues 
+                $stmt = $pdo->prepare("INSERT INTO archived_queues 
                     (queue_id, service_id, user_id, queue_number, status, queue_type_id, 
                     scheduled_time, created_at, serving_start_time, elapsed_time, 
                     archive_reason)
                     SELECT id, service_id, user_id, queue_number, 'cancelled', queue_type_id,
                     scheduled_time, created_at, serving_start_time, elapsed_time,
                     'User cancelled queue'
-                    FROM queues WHERE queue_number = ?";
-                $stmt = $conn->prepare($archiveSql);
-                $stmt->bind_param("s", $queueNumber);
-                $stmt->execute();
+                    FROM queues WHERE queue_number = ?");
+                $stmt->execute([$queueNumber]);
 
                 // 3. Delete from queues
-                $deleteSql = "DELETE FROM queues WHERE queue_number = ?";
-                $stmt = $conn->prepare($deleteSql);
-                $stmt->bind_param("s", $queueNumber);
-                $stmt->execute();
+                $stmt = $pdo->prepare("DELETE FROM queues WHERE queue_number = ?");
+                $stmt->execute([$queueNumber]);
 
-                $conn->commit();
+                $pdo->commit();
                 echo json_encode(['success' => true]);
 
             } else {
@@ -125,7 +115,7 @@ switch ($_SERVER['REQUEST_METHOD']) {
             }
 
         } catch (Exception $e) {
-            $conn->rollback();
+            $pdo->rollback();
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
