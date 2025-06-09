@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/db.php';
-require '../vendor/autoload.php';
+require '/vendor/autoload.php';
 
 $env = parse_ini_file('/.env');
 
