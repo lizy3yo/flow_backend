@@ -26,4 +26,4 @@ RUN chown -R www-data:www-data /var/www
 
 # Expose port 8080 and start the PHP built-in server
 EXPOSE 8080
-CMD ["php", "-S", "0.0.0.0:8080", "-t", "public"]
+CMD ["php", "-S", "0.0.0.0:8080"]
