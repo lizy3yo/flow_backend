@@ -17,7 +17,7 @@ require_once __DIR__ . '/db.php';
 require __DIR__ . '/vendor/autoload.php';  // Changed from '../vendor/autoload.php'
 
 // Check if .env file exists
-$envFile = '../.env';
+$envFile = '.env';
 if (!file_exists($envFile)) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Configuration file not found']);

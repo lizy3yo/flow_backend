@@ -4,7 +4,7 @@ require '../vendor/autoload.php'; // Changed from 'vendor/autoload.php'
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-$env = parse_ini_file('../.env'); // Changed from '.env'
+$env = parse_ini_file('.env'); // Changed from '.env'
 
 $mail = new PHPMailer(true);
 try {
