@@ -2,16 +2,18 @@
 require_once __DIR__ . '/../vendor/autoload.php';
 include 'db.php';
 
+// CORS configuration for Render deployment
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 header('Content-Type: application/json');
 
+// Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
     exit();
 }
-
 $data = json_decode(file_get_contents('php://input'), true);
 $client_id = '423373752798-3lmutkhmfcs5a646l1up4gceciintqim.apps.googleusercontent.com';
 $client_secret = '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';
