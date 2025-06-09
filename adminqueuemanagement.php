@@ -1,15 +1,13 @@
 <?php
-
 session_start();
 include "db.php";
 
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
-// Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
@@ -35,10 +33,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                         WHERE q.service_id = ? AND q.queue_type_id = 1
                         ORDER BY q.created_at ASC";
         
-        $stmt = $conn->prepare($regularQuery);
-        $stmt->bind_param("i", $service_id);
-        $stmt->execute();
-        $regularQueues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt = $pdo->prepare($regularQuery);
+        $stmt->execute([$service_id]);
+        $regularQueues = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Get priority queues
         $priorityQuery = "SELECT q.*, CONCAT(u.first_name, ' ', u.last_name) as name,
@@ -49,10 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                          WHERE q.service_id = ? AND q.queue_type_id = 2
                          ORDER BY q.created_at ASC";
         
-        $stmt = $conn->prepare($priorityQuery);
-        $stmt->bind_param("i", $service_id);
-        $stmt->execute();
-        $priorityQueues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt = $pdo->prepare($priorityQuery);
+        $stmt->execute([$service_id]);
+        $priorityQueues = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Get scheduled queues
         $scheduledQuery = "SELECT q.*, CONCAT(u.first_name, ' ', u.last_name) as name,
@@ -64,10 +60,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                           WHERE q.service_id = ? AND q.queue_type_id = 3
                           ORDER BY q.scheduled_time ASC";
         
-        $stmt = $conn->prepare($scheduledQuery);
-        $stmt->bind_param("i", $service_id);
-        $stmt->execute();
-        $scheduledQueues = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt = $pdo->prepare($scheduledQuery);
+        $stmt->execute([$service_id]);
+        $scheduledQueues = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         echo json_encode([
             'regular' => $regularQueues,
@@ -92,24 +87,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     }
 
     try {
-        $stmt = $conn->prepare("UPDATE queues SET status = ? WHERE id = ?");
-        $stmt->bind_param("si", $data['status'], $data['queue_id']);
+        $stmt = $pdo->prepare("UPDATE queues SET status = ? WHERE id = ?");
         
-        if ($stmt->execute()) {
+        if ($stmt->execute([$data['status'], $data['queue_id']])) {
             // If updating to 'serving', record the start time
             if ($data['status'] === 'serving') {
-                $stmt = $conn->prepare("UPDATE queues SET serving_start_time = CURRENT_TIMESTAMP WHERE id = ?");
-                $stmt->bind_param("i", $data['queue_id']);
-                $stmt->execute();
+                $stmt = $pdo->prepare("UPDATE queues SET serving_start_time = CURRENT_TIMESTAMP WHERE id = ?");
+                $stmt->execute([$data['queue_id']]);
             }
             
             // If updating to 'completed', calculate and store elapsed time
             if ($data['status'] === 'completed') {
-                $stmt = $conn->prepare("UPDATE queues SET 
+                $stmt = $pdo->prepare("UPDATE queues SET 
                     elapsed_time = TIMEDIFF(CURRENT_TIMESTAMP, serving_start_time)
                     WHERE id = ?");
-                $stmt->bind_param("i", $data['queue_id']);
-                $stmt->execute();
+                $stmt->execute([$data['queue_id']]);
             }
             
             echo json_encode(['success' => true]);
@@ -135,12 +127,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     try {
         // Archive the queue first
         $reason = "Manually archived by admin";
-        if (archiveQueue($conn, $queue_id, $reason)) {
+        if (archiveQueue($pdo, $queue_id, $reason)) {
             // Then delete from main queue table
-            $stmt = $conn->prepare("DELETE FROM queues WHERE id = ?");
-            $stmt->bind_param("i", $queue_id);
+            $stmt = $pdo->prepare("DELETE FROM queues WHERE id = ?");
             
-            if ($stmt->execute()) {
+            if ($stmt->execute([$queue_id])) {
                 echo json_encode(['success' => true]);
             } else {
                 throw new Exception('Failed to delete queue');
@@ -155,20 +146,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
 }
 
 // Function to archive a queue
-function archiveQueue($conn, $queue_id, $reason) {
+function archiveQueue($pdo, $queue_id, $reason) {
     // Get queue details
-    $stmt = $conn->prepare("SELECT * FROM queues WHERE id = ?");
-    $stmt->bind_param("i", $queue_id);
-    $stmt->execute();
-    $queue = $stmt->get_result()->fetch_assoc();
+    $stmt = $pdo->prepare("SELECT * FROM queues WHERE id = ?");
+    $stmt->execute([$queue_id]);
+    $queue = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$queue) {
+        return false;
+    }
 
     // Insert into archived_queues
-    $archiveStmt = $conn->prepare("INSERT INTO archived_queues 
+    $archiveStmt = $pdo->prepare("INSERT INTO archived_queues 
         (queue_id, service_id, user_id, queue_number, status, queue_type_id,
         scheduled_time, created_at, serving_start_time, elapsed_time, archive_reason) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
-    $archiveStmt->bind_param("iiississsss", 
+    return $archiveStmt->execute([
         $queue['id'],
         $queue['service_id'],
         $queue['user_id'],
@@ -180,7 +174,6 @@ function archiveQueue($conn, $queue_id, $reason) {
         $queue['serving_start_time'],
         $queue['elapsed_time'],
         $reason
-    );
-    
-    return $archiveStmt->execute();
+    ]);
 }
+?>
