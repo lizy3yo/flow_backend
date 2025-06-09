@@ -66,7 +66,7 @@ switch ($_SERVER['REQUEST_METHOD']) {
 
             // Get notifications with pagination
             $stmt = $pdo->prepare("
-                SELECT * 
+                SELECT id, admin_id, type, message, action, entity_id, created_at, read_at
                 FROM admin_notifications 
                 WHERE admin_id = ? 
                 ORDER BY created_at DESC 
