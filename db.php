@@ -7,12 +7,17 @@ define('DB_USER', 'flow-app');
 define('DB_PASS', 'kier253022');
 define('DB_NAME', 'flow-app_queue');
 
-$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
-if ($conn->connect_error) {
-    error_log("Connection failed: " . $conn->connect_error);
+try {
+    $pdo = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8", DB_USER, DB_PASS);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    // For backward compatibility, create a mysqli-like object
+    $conn = $pdo;
+} catch (PDOException $e) {
+    error_log("Connection failed: " . $e->getMessage());
     die(json_encode([
         "success" => false,
-        "message" => "Database connection failed: " . $conn->connect_error
+        "message" => "Database connection failed: " . $e->getMessage()
     ]));
 }
 ?>

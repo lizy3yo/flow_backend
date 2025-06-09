@@ -1,7 +1,7 @@
 <?php
 include 'db.php';
 
-// Update CORS headers to match your frontend domain
+// Fix: Update CORS headers to match your actual frontend domain
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true'); 
 header('Access-Control-Allow-Methods: POST, OPTIONS');
@@ -23,11 +23,9 @@ if (empty($data['email']) || empty($data['password'])) {
 }
 
 try {
-    $stmt = $conn->prepare("SELECT * FROM admins WHERE email = ? LIMIT 1");
-    $stmt->bind_param("s", $data['email']);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $admin = $result->fetch_assoc();
+    $stmt = $pdo->prepare("SELECT * FROM admins WHERE email = ? LIMIT 1");
+    $stmt->execute([$data['email']]);
+    $admin = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($admin && password_verify($data['password'], $admin['password'])) {
         // Login successful
@@ -38,10 +36,8 @@ try {
         $session_token = bin2hex(random_bytes(32));
         
         // Store session token in database
-        $token_stmt = $conn->prepare("UPDATE admins SET session_token = ? WHERE id = ?");
-        $token_stmt->bind_param("si", $session_token, $admin['id']);
-        $token_stmt->execute();
-        $token_stmt->close();
+        $token_stmt = $pdo->prepare("UPDATE admins SET session_token = ? WHERE id = ?");
+        $token_stmt->execute([$session_token, $admin['id']]);
         
         // Remove password from response
         unset($admin['password']);
@@ -65,6 +61,4 @@ try {
         'message' => 'Server error'
     ]);
 }
-
-$stmt->close();
-$conn->close();
+?>
