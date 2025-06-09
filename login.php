@@ -31,6 +31,31 @@ try {
     $user = $result->fetch_assoc();
 
     if ($user && password_verify($data['password'], $user['password'])) {
+        
+        // Check if user has completed OTP verification today
+        $otp_stmt = $conn->prepare("
+            SELECT verified_at 
+            FROM otp_verifications 
+            WHERE email = ? 
+            AND verified = TRUE 
+            AND DATE(verified_at) = CURRENT_DATE()
+            LIMIT 1
+        ");
+        $otp_stmt->bind_param("s", $data['email']);
+        $otp_stmt->execute();
+        $otp_result = $otp_stmt->get_result();
+        
+        if ($otp_result->num_rows === 0) {
+            // User hasn't completed OTP verification today
+            echo json_encode([
+                'success' => false,
+                'message' => 'OTP verification required',
+                'requireOtp' => true,
+                'email' => $data['email']
+            ]);
+            exit();
+        }
+        
         // Start session
         session_start();
         $_SESSION['user_id'] = $user['id'];
