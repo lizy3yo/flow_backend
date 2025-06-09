@@ -2,7 +2,7 @@
 session_start();
 include "db.php";
 require_once "Helper/notificationhelper.php";
-$notificationHelper = new NotificationHelper($conn);
+$notificationHelper = new NotificationHelper($pdo);
 
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
@@ -10,10 +10,11 @@ header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     http_response_code(200);
     exit();
 }
+
 // Check if user is logged in
 if (!isset($_SESSION['admin_id'])) {
     http_response_code(401);
@@ -53,26 +54,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['avatar'])) {
         // Store relative path in database
         $relativePath = '/flow-application-cc/uploads/avatars/' . $newFileName;
         
-        $stmt = $conn->prepare("UPDATE establishments SET avatar = ? WHERE admin_id = ?");
-        $stmt->bind_param('si', $relativePath, $admin_id);
+        $stmt = $pdo->prepare("UPDATE establishments SET avatar = ? WHERE admin_id = ?");
+        $stmt->execute([$relativePath, $admin_id]);
         
-        if ($stmt->execute()) {
-            // Add notification
-            $notificationHelper->createNotification(
-                $admin_id,
-                'profile',
-                $notificationHelper->formatProfileAction('avatar'),
-                'update_avatar',
-                null
-            );
-            echo json_encode([
-                'success' => true,
-                'avatar' => $relativePath
-            ]);
-        } else {
-            http_response_code(500);
-            echo json_encode(['error' => 'Failed to update database']);
-        }
+        // Add notification
+        $notificationHelper->createNotification(
+            $admin_id,
+            'profile',
+            $notificationHelper->formatProfileAction('avatar'),
+            'update_avatar',
+            null
+        );
+        echo json_encode([
+            'success' => true,
+            'avatar' => $relativePath
+        ]);
     } else {
         http_response_code(500);
         echo json_encode(['error' => 'Failed to upload file']);
@@ -89,11 +85,9 @@ switch ($_SERVER['REQUEST_METHOD']) {
                 LEFT JOIN establishments e ON a.id = e.admin_id 
                 WHERE a.id = ?";
         
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param('i', $admin_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $data = $result->fetch_assoc();
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$admin_id]);
+        $data = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($data) {
             unset($data['password']);
@@ -110,54 +104,43 @@ switch ($_SERVER['REQUEST_METHOD']) {
         // Check if this is just a status update
         if (isset($data['action']) && $data['action'] === 'update_status_only') {
             // Only update the queue_status field
-            $stmt = $conn->prepare("UPDATE establishments SET queue_status = ? WHERE admin_id = ?");
-            $stmt->bind_param('si', $data['queue_status'], $admin_id);
+            $stmt = $pdo->prepare("UPDATE establishments SET queue_status = ? WHERE admin_id = ?");
+            $stmt->execute([$data['queue_status'], $admin_id]);
             
-            if ($stmt->execute()) {
-                echo json_encode(['success' => true, 'message' => 'Status updated successfully']);
-            } else {
-                http_response_code(500);
-                echo json_encode(['error' => 'Failed to update status']);
-            }
+            echo json_encode(['success' => true, 'message' => 'Status updated successfully']);
             exit;
         }
         
         // Begin transaction
-        $conn->begin_transaction();
+        $pdo->beginTransaction();
         
         try {
             // Handle admin account updates
             if (isset($data['name']) || isset($data['email']) || isset($data['password'])) {
                 $sql = "UPDATE admins SET";
-                $types = "";
                 $params = [];
                 
                 if (isset($data['name'])) {
-                    $sql .= " name = ?,";
-                    $types .= "s";
+                    $sql .= " name = ?, ";
                     $params[] = $data['name'];
                 }
                 
                 if (isset($data['email'])) {
-                    $sql .= " email = ?,";
-                    $types .= "s";
+                    $sql .= " email = ?, ";
                     $params[] = $data['email'];
                 }
                 
                 if (isset($data['password']) && !empty($data['password'])) {
-                    $sql .= " password = ?,";
-                    $types .= "s";
+                    $sql .= " password = ?, ";
                     $params[] = password_hash($data['password'], PASSWORD_DEFAULT);
                 }
                 
-                $sql = rtrim($sql, ",");
+                $sql = rtrim($sql, ", ");
                 $sql .= " WHERE id = ?";
-                $types .= "i";
                 $params[] = $admin_id;
                 
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param($types, ...$params);
-                $stmt->execute();
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
             }
 
             // Handle establishment updates
@@ -167,10 +150,9 @@ switch ($_SERVER['REQUEST_METHOD']) {
                 isset($data['hours_end'])) {
                 
                 // Check if establishment exists
-                $check = $conn->prepare("SELECT id FROM establishments WHERE admin_id = ?");
-                $check->bind_param('i', $admin_id);
-                $check->execute();
-                $exists = $check->get_result()->num_rows > 0;
+                $check = $pdo->prepare("SELECT id FROM establishments WHERE admin_id = ?");
+                $check->execute([$admin_id]);
+                $exists = $check->rowCount() > 0;
                 
                 if ($exists) {
                     // Update existing establishment
@@ -191,8 +173,8 @@ switch ($_SERVER['REQUEST_METHOD']) {
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
                 }
                 
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param("sssssssi", 
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
                     $data['description'],
                     $data['queue_status'],
                     $data['location'],
@@ -201,8 +183,7 @@ switch ($_SERVER['REQUEST_METHOD']) {
                     $data['hours_start'],
                     $data['hours_end'],
                     $admin_id
-                );
-                $stmt->execute();
+                ]);
             }
             
             // For admin profile updates
@@ -269,14 +250,14 @@ switch ($_SERVER['REQUEST_METHOD']) {
                 }
             }
             
-            $conn->commit();
+            $pdo->commit();
             echo json_encode([
                 'success' => true,
                 'message' => 'Profile updated successfully'
             ]);
             
         } catch (Exception $e) {
-            $conn->rollback();
+            $pdo->rollback();
             http_response_code(500);
             echo json_encode([
                 'error' => 'Failed to update profile',
@@ -290,11 +271,9 @@ switch ($_SERVER['REQUEST_METHOD']) {
         
         if (isset($data['action']) && $data['action'] === 'delete_avatar') {
             // Get current avatar path
-            $stmt = $conn->prepare("SELECT avatar FROM establishments WHERE admin_id = ?");
-            $stmt->bind_param('i', $admin_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $current = $result->fetch_assoc();
+            $stmt = $pdo->prepare("SELECT avatar FROM establishments WHERE admin_id = ?");
+            $stmt->execute([$admin_id]);
+            $current = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($current && $current['avatar']) {
                 // Use document root to get absolute file path
@@ -304,15 +283,10 @@ switch ($_SERVER['REQUEST_METHOD']) {
                 }
                 
                 // Update database to remove avatar reference
-                $stmt = $conn->prepare("UPDATE establishments SET avatar = NULL WHERE admin_id = ?");
-                $stmt->bind_param('i', $admin_id);
+                $stmt = $pdo->prepare("UPDATE establishments SET avatar = NULL WHERE admin_id = ?");
+                $stmt->execute([$admin_id]);
                 
-                if ($stmt->execute()) {
-                    echo json_encode(['success' => true]);
-                } else {
-                    http_response_code(500);
-                    echo json_encode(['error' => 'Failed to update database']);
-                }
+                echo json_encode(['success' => true]);
             } else {
                 echo json_encode(['success' => true]);
             }
