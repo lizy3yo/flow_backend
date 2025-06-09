@@ -1,9 +1,14 @@
 <?php
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
 
 require_once __DIR__ . '/db.php';
 
@@ -21,78 +26,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         // Start transaction
-        $conn->begin_transaction();
+        $pdo->beginTransaction();
 
         // First get the user ID from email
-        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($result->num_rows === 0) {
+        if (!$result) {
             throw new Exception('Invalid email address');
         }
 
-        $user = $result->fetch_assoc();
-        $user_id = $user['id'];
+        $user_id = $result['id'];
 
         // Check if there are any reset tokens for this user
-        $checkStmt = $conn->prepare("SELECT COUNT(*) as count FROM password_resets WHERE user_id = ?");
-        $checkStmt->bind_param("i", $user_id);
-        $checkStmt->execute();
-        $checkResult = $checkStmt->get_result();
-        $count = $checkResult->fetch_assoc()['count'];
+        $checkStmt = $pdo->prepare("SELECT COUNT(*) as count FROM password_resets WHERE user_id = ?");
+        $checkStmt->execute([$user_id]);
+        $checkResult = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        $count = $checkResult['count'];
         
         if ($count == 0) {
             throw new Exception('No reset request found. Please request a new password reset.');
         }
 
         // Get the most recent valid reset token
-        $stmt = $conn->prepare("
+        $stmt = $pdo->prepare("
             SELECT token, expiry 
             FROM password_resets 
             WHERE user_id = ? 
             ORDER BY expiry DESC 
             LIMIT 1
         ");
-        $stmt->bind_param("i", $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $stmt->execute([$user_id]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($result->num_rows === 0) {
+        if (!$result) {
             throw new Exception('No valid reset token found');
         }
 
-        $reset = $result->fetch_assoc();
-        
         // Check if token is expired
         $now = new DateTime();
-        $expiryTime = new DateTime($reset['expiry']);
+        $expiryTime = new DateTime($result['expiry']);
         
         if ($now > $expiryTime) {
             throw new Exception('OTP has expired. Please request a new one.');
         }
         
         // Verify the OTP
-        if (!password_verify($otp, $reset['token'])) {
+        if (!password_verify($otp, $result['token'])) {
             throw new Exception('Invalid OTP code. Please check and try again.');
         }
 
         // Update password
-        $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
-        $stmt->bind_param("si", $password, $user_id);
-        
-        if (!$stmt->execute()) {
-            throw new Exception('Failed to update password');
-        }
+        $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
+        $stmt->execute([$password, $user_id]);
 
         // Delete all reset tokens for this user
-        $stmt = $conn->prepare("DELETE FROM password_resets WHERE user_id = ?");
-        $stmt->bind_param("i", $user_id);
-        $stmt->execute();
+        $stmt = $pdo->prepare("DELETE FROM password_resets WHERE user_id = ?");
+        $stmt->execute([$user_id]);
 
         // Commit transaction
-        $conn->commit();
+        $pdo->commit();
         
         echo json_encode([
             'success' => true, 
@@ -101,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } catch (Exception $e) {
         // Rollback transaction on error
-        $conn->rollback();
+        $pdo->rollback();
         echo json_encode([
             'success' => false, 
             'message' => $e->getMessage()

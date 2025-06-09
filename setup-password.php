@@ -1,5 +1,4 @@
 <?php
-
 include 'db.php';
 
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
@@ -8,7 +7,6 @@ header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
-// Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
@@ -25,10 +23,10 @@ try {
     $hashed_password = password_hash($data['password'], PASSWORD_DEFAULT);
 
     // Update the user's password
-    $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
-    $stmt->bind_param("si", $hashed_password, $data['user_id']);
+    $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
+    $stmt->execute([$hashed_password, $data['user_id']]);
     
-    if ($stmt->execute()) {
+    if ($stmt->rowCount() > 0) {
         echo json_encode([
             'success' => true,
             'message' => 'Password setup successful'
@@ -42,6 +40,4 @@ try {
         'message' => $e->getMessage()
     ]);
 }
-
-$conn->close();
 ?>

@@ -7,14 +7,22 @@ $env = parse_ini_file('../.env');
 
 header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
-// Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
+}
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+    exit;
 }
 
 $data = json_decode(file_get_contents('php://input'), true);
@@ -28,7 +36,7 @@ if (empty($email)) {
 
 try {
     // Check if user has already verified today
-    $stmt = $conn->prepare("
+    $stmt = $pdo->prepare("
         SELECT verified_at 
         FROM otp_verifications 
         WHERE email = ? 
@@ -36,11 +44,10 @@ try {
         AND DATE(verified_at) = CURRENT_DATE()
         LIMIT 1
     ");
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt->execute([$email]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($result->num_rows > 0) {
+    if ($result) {
         // User already verified today, no need for OTP
         echo json_encode(['success' => true, 'message' => 'Already verified today', 'skipOtp' => true]);
         exit;
@@ -51,12 +58,8 @@ try {
     $hashedOtp = password_hash($otp, PASSWORD_DEFAULT);
     
     // Store OTP in database
-    $stmt = $conn->prepare("INSERT INTO otp_verifications (email, otp, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))");
-    $stmt->bind_param("ss", $email, $hashedOtp);
-    
-    if (!$stmt->execute()) {
-        throw new Exception("Failed to store OTP");
-    }
+    $stmt = $pdo->prepare("INSERT INTO otp_verifications (email, otp, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))");
+    $stmt->execute([$email, $hashedOtp]);
 
     // Send email with OTP
     $mail = new PHPMailer(true);
@@ -79,7 +82,7 @@ try {
     $mail->SMTPKeepAlive = true;
     
     // Recipients
-    $mail->setFrom($env['SMTP_USERNAME'], $env['SMTP_FROM_NAME']); // Changed from $_ENV to $env
+    $mail->setFrom($env['SMTP_USERNAME'], $env['SMTP_FROM_NAME']);
     $mail->addAddress($email);
     
     // Content
@@ -104,3 +107,4 @@ try {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Failed to send OTP: ' . $e->getMessage()]);
 }
+?>
