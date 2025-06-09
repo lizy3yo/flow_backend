@@ -6,7 +6,7 @@ include "db.php";
 require_once "Helper/notificationhelper.php";
 require_once "Helper/usernotificationhelper.php"; // Already included
 
-header('Access-Control-Allow-Origin: http://localhost:8080');
+header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');

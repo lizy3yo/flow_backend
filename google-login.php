@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../vendor/autoload.php';
 include 'db.php';
 
-header('Access-Control-Allow-Origin: http://localhost:8080');
+header('Access-Control-Allow-Origin: https://flow-i3g6.vercel.app');
 header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
@@ -27,7 +27,7 @@ try {
         'client_secret' => $client_secret,
         'code' => $data['token'],
         'grant_type' => 'authorization_code',
-        'redirect_uri' => 'http://localhost:8080'
+        'redirect_uri' => 'https://flow-i3g6.vercel.app'
     ];
 
     $ch = curl_init($token_url);
