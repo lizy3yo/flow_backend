@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Only include dependencies after headers are set
 require_once __DIR__ . '/db.php';
-require '../vendor/autoload.php';
+require __DIR__ . '/vendor/autoload.php';  // Changed from '../vendor/autoload.php'
 
 // Check if .env file exists
 $envFile = '../.env';
