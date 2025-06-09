@@ -9,18 +9,11 @@ RUN apt-get update && apt-get install -y \
     npm \
     pkg-config \
     libonig-dev \
-    libzip-dev
+    libzip-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Clear apt cache to reduce image size
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install PHP extensions (one by one to isolate any issues)
-RUN docker-php-ext-install pdo_mysql
-RUN docker-php-ext-install mbstring
-RUN docker-php-ext-install zip
-
-# Install Composer
-COPY --from=composer:2.6 /usr/bin/composer /usr/bin/composer
+# Install PHP extensions
+RUN docker-php-ext-install pdo_mysql mbstring zip
 
 # Set working directory
 WORKDIR /var/www
@@ -28,12 +21,9 @@ WORKDIR /var/www
 # Copy application files
 COPY . /var/www
 
-# Install dependencies
-RUN composer install --no-dev --optimize-autoloader
-
 # Set permissions
 RUN chown -R www-data:www-data /var/www
 
-# Expose port 8080 and start Slim app with PHP's built-in server
+# Expose port 8080 and start the PHP built-in server
 EXPOSE 8080
-CMD php -S 0.0.0.0:8080 -t public
+CMD ["php", "-S", "0.0.0.0:8080", "-t", "public"]
